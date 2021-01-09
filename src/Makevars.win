@@ -1,0 +1,5 @@
+ifeq "$(WIN)" "64"
+	PKG_LIBS = -g3 -m64 -lodbc32
+else
+	PKG_LIBS = -g3 -m32 -lodbc32
+endif

@@ -1,0 +1,14 @@
+Package: bcp
+Type: Package
+Title: Bulk Upload Data into SQL tables
+Description: This package implements functionality bulk loading data frames
+    into SQL tables by using ODBC Bulk Operations API
+Version: 0.1.0
+Depends: RODBC
+Author: marymoni
+Maintainer: Iurii Marymonskyi <iurii.marymonskyi@example.com>
+NeedsCompilation: yes
+ByteCompile: yes
+Encoding: UTF-8
+License: MIT
+RoxygenNote: 7.1.0
