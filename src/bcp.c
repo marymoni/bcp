@@ -45,6 +45,18 @@ void check_error(SQLRETURN r, char* msg, SQLHANDLE handle, SQLSMALLINT type) {
 
 void bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int show_progress) {
 
+    if (chunk_size < 1) {
+        chunk_size = 1;
+    }
+
+    int col_len = LENGTH(r_data);
+    if (!col_len) return;
+    
+    int row_len = LENGTH(VECTOR_ELT(r_data, 0));
+    if (!row_len) return;
+
+    SQLLEN col_info[col_len][chunk_size];
+
     SQLHSTMT stmt;
     SQLRETURN res;
     
@@ -63,32 +75,17 @@ void bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int s
     res = SQLSetStmtAttr(stmt, SQL_ATTR_ROW_BIND_TYPE, SQL_BIND_BY_COLUMN, 0);
     check_error(res, "Set row bind type attribute", stmt, SQL_HANDLE_STMT);
     
-    SEXP names = attr(r_data, R_NamesSymbol);
+    SEXP col_names = attr(r_data, R_NamesSymbol);
 
-    int col_len = LENGTH(r_data);
-    int row_len = 0;
     int char_col_len = 0;
-    int int_col_len = 0;
-    int real_col_len = 0;
-    SEXP columns[col_len];
-    
     for(int i = 0; i < col_len; i++) {
-        columns[i] = VECTOR_ELT(r_data, i);
-        row_len = LENGTH(columns[i]);
-        
-        if (TYPEOF(columns[i]) == STRSXP) {
-            char_col_len++;
-        } else if (TYPEOF(columns[i]) == INTSXP) {
-            int_col_len++;
-        } else if (TYPEOF(columns[i]) == REALSXP) {
-            real_col_len++;
-        } else {
-            
+        if (TYPEOF(VECTOR_ELT(r_data, i)) == STRSXP) {
+            char_col_len++;           
         }
     }
     
     int complete = 0;
-    
+
     while(complete < row_len) {
 
         int start = complete;
@@ -100,63 +97,55 @@ void bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int s
         
         char char_data[char_col_len][row_volume][256];
         int char_data_index;
-
-        SQLLEN int_info[int_col_len][row_volume];
-        int int_data_index = 0;
-        
-        SQLLEN real_info[real_col_len][row_volume];
-        int real_data_index = 0;
         
         for(int i = 0; i < col_len; i++) {
-            
+
             int col_num = i + 1;
-            
-            if (TYPEOF(columns[i]) == STRSXP) {
-                
+            SEXP column = VECTOR_ELT(r_data, i);
+
+            if (TYPEOF(column) == STRSXP) {
+
                     for(int j = start; j < complete; j++) {
-                        const char * d_val = CHAR(STRING_ELT(columns[i], j));
+                        const char * d_val = CHAR(STRING_ELT(column, j));
                         strcpy((char*) char_data[char_data_index][j - start], d_val);
-                        
                     }
-                
+
                     res = SQLBindCol(stmt, col_num, SQL_C_CHAR, char_data[char_data_index][0], sizeof(char_data[char_data_index][0]), NULL);
                     check_error(res, "Bind column", stmt, SQL_HANDLE_STMT);
                     char_data_index++;
 
-            } else if (TYPEOF(columns[i]) == INTSXP) {
+            } else if (TYPEOF(column) == INTSXP) {
 
-                    int* data_array = INTEGER(columns[i]);
+                    int* data_array = INTEGER(column);
                     
-                    memset(int_info[int_data_index], 0, sizeof(SQLLEN) * row_volume);
+                    memset(col_info[i], 0, sizeof(SQLLEN) * row_volume);
 
                     for(int j = start; j < complete; j++) {
                         if (data_array[j] == NA_INTEGER) {
-                            int_info[int_data_index][j - start] = SQL_COLUMN_IGNORE;
+                            col_info[i][j - start] = SQL_COLUMN_IGNORE;
                         }
                     }
-                
-                    res = SQLBindCol(stmt, col_num, SQL_C_LONG, &data_array[start], sizeof(int), int_info[int_data_index]);
+
+                    res = SQLBindCol(stmt, col_num, SQL_C_LONG, &data_array[start], sizeof(int), col_info[i]);
                     check_error(res, "Bind column", stmt, SQL_HANDLE_STMT);
-                    int_data_index++;
                 
-            } else if (TYPEOF(columns[i]) == REALSXP) {
+            } else if (TYPEOF(column) == REALSXP) {
                 
-                    double* data_array = REAL(columns[i]);
+                    double* data_array = REAL(column);
                     
-                    memset(real_info[real_data_index], 0, sizeof(SQLLEN) * row_volume);
+                    memset(col_info[i], 0, sizeof(SQLLEN) * row_volume);
 
                     for(int j = start; j < complete; j++) {
                         if (ISNA(data_array[j])) {
-                            real_info[real_data_index][j - start] = SQL_COLUMN_IGNORE;
+                            col_info[i][j - start] = SQL_COLUMN_IGNORE;
                         }
                     }
                 
-                    res = SQLBindCol(stmt, col_num, SQL_C_DOUBLE, &data_array[start], sizeof(double), real_info[real_data_index]);
+                    res = SQLBindCol(stmt, col_num, SQL_C_DOUBLE, &data_array[start], sizeof(double), col_info[i]);
                     check_error(res, "Bind column", stmt, SQL_HANDLE_STMT);
-                    real_data_index++;
-                
+
             } else {
-                const char* col_name = CHAR(STRING_ELT(names, i));
+                const char* col_name = CHAR(STRING_ELT(col_names, i));
                 Rf_error("Could not load column %s - type not supported\n", col_name);
             }
         }
@@ -185,14 +174,36 @@ void bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int s
     SQLFreeHandle(SQL_HANDLE_STMT, stmt);
 }
 
+int check_variable_class(const SEXP var_obj, const char *class_name) {
+
+    SEXP obj_classes  = getAttrib(var_obj, R_ClassSymbol);
+
+    if (!isNull(obj_classes)) {
+        for(int i = 0; i < length(obj_classes); i++) {
+            if (strcmp(CHAR(STRING_ELT(obj_classes, i)), class_name) == 0) {
+                return TRUE;
+            }
+        }
+    }
+
+    return FALSE;
+}
+
 SEXP R_bcp(SEXP r_handle_ptr, SEXP r_data, SEXP r_table_name, SEXP r_chunk_size, SEXP r_show_progress) {
 
-    // TODO: add checks for input params
-    const char * table_name = CHAR(STRING_ELT(r_table_name, 0));
-    int chunk_size = asInteger(r_chunk_size);
-    int show_progress = asLogical(r_show_progress);
-
+    if (TYPEOF(r_handle_ptr) != EXTPTRSXP) Rf_error("Incorrect type for connection handle param\n");
     SQLHDBC* dbc_ptr = (SQLHDBC*) R_ExternalPtrAddr(r_handle_ptr);
+
+    if (TYPEOF(r_data) != VECSXP || !check_variable_class(r_data, "data.frame")) Rf_error("Incorrect type for r_data param\n");
+
+    if (TYPEOF(r_table_name) != STRSXP || LENGTH(r_table_name) != 1) Rf_error("Incorrect type or len for table_name param\n");
+    const char * table_name = CHAR(STRING_ELT(r_table_name, 0));
+    
+    if (TYPEOF(r_chunk_size) != INTSXP || LENGTH(r_chunk_size) != 1) Rf_error("Incorrect type or len for chunk_size param\n");
+    int chunk_size = INTEGER(r_chunk_size)[0];
+
+    if (TYPEOF(r_show_progress) != LGLSXP || LENGTH(r_show_progress) != 1) Rf_error("Incorrect type or len for show_progress param\n");
+    int show_progress = LOGICAL(r_show_progress)[0];
 
     bcp(*dbc_ptr, r_data, table_name, chunk_size, show_progress);
 

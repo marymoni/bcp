@@ -13,6 +13,6 @@ NULL
 #'
 bcp = function(conn, data, table_name, chunk_size = 5000L, show_progress = TRUE) {
 
-    .Call(R_bcp, attr(conn, "handle_ptr"), data, table_name, chunk_size, show_progress)
+    .Call(R_bcp, attr(conn, "handle_ptr"), data, table_name, as.integer(chunk_size), show_progress)
     invisible()
 }
