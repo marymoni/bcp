@@ -1,11 +1,12 @@
 # bcp
+
 Upload R Data Frames by using ODBC Bulk Load API
 
 The package allows to load R data frames / tables into SQL databases by using bulk load ODBC API.
 
 This is faster loader approach than one implemented in RODBC::sqlSave() function.
 
-Simple example
+Simple example:
 
 ```
 library(bcp)
@@ -16,4 +17,7 @@ df = data.frame(A = 1:10, B = 1:10)
 
 bcp(conn, df, "dbo.DemoTable")
 
+bcp(conn, df, "dbo.TableDoesNotExist")
+
+bcp(conn, df, "dbo.AutoCreateTable", auto_create_table = TRUE)
 ```
