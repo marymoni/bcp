@@ -4,7 +4,14 @@
 \alias{bcp}
 \title{Bulk Upload Data Frame into SQL Table}
 \usage{
-bcp(conn, data, table_name, chunk_size = 5000L, show_progress = TRUE)
+bcp(
+  conn,
+  data,
+  table_name,
+  chunk_size = 5000L,
+  show_progress = TRUE,
+  auto_create_table = FALSE
+)
 }
 \arguments{
 \item{conn}{RODBC connection return by odbcDriverConnect() function}
