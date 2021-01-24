@@ -7,6 +7,7 @@
 #include <sqlext.h>
 #include <time.h>
 
+#define BOOL_TYPE 'B'
 #define CHAR_TYPE 'C'
 #define DATE_TYPE 'D'
 #define REAL_TYPE 'R'
@@ -129,9 +130,11 @@ void bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int s
             }
         } else if (TYPEOF(col_data) == INTSXP) {
             col_types[i] = INT_TYPE;
+        } else if (TYPEOF(col_data) == LGLSXP) {
+            col_types[i] = BOOL_TYPE;
         } else {
             const char* col_name = CHAR(STRING_ELT(col_names, i));
-            Rf_error("Could not load column %s - type not supported\n", col_name);
+            Rf_error("Could not load column %s - type %d not supported\n", col_name, TYPEOF(col_data));
         }
     }
     
@@ -205,6 +208,18 @@ void bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int s
                 res = SQLBindCol(stmt, col_num, SQL_C_LONG, &int_data_array[start], sizeof(int), col_info[i]);
                 check_error(res, "Bind column", stmt, SQL_HANDLE_STMT);
                 
+            } else if (col_types[i] == BOOL_TYPE) {
+                
+                int* bool_data_array = LOGICAL(column);
+
+                for(int j = start; j < complete; j++) {
+                    if (bool_data_array[j] == NA_LOGICAL) {
+                        col_info[i][j - start] = SQL_COLUMN_IGNORE;
+                    }
+                }
+
+                res = SQLBindCol(stmt, col_num, SQL_C_LONG, &bool_data_array[start], sizeof(int), col_info[i]);
+                check_error(res, "Bind column", stmt, SQL_HANDLE_STMT);                
             }
         }
 
