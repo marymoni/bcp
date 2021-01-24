@@ -23,6 +23,8 @@ bcp(
 \item{chunk_size}{How many rows to load in each chunk}
 
 \item{show_progress}{Logical flag which indicates whether to show data loading progress}
+
+\item{auto_create_table}{Logical flag whether automatically create table structure before data uploading}
 }
 \description{
 Bulk Upload Data Frame into SQL Table
