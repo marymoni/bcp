@@ -18,9 +18,11 @@ bcp = function(conn, data, table_name, chunk_size = 5000L, show_progress = TRUE,
         create_table_structure(conn, table_name, data)
     }
 
-    .Call(R_bcp, attr(conn, "handle_ptr"), data, table_name, as.integer(chunk_size), show_progress)
+    res = .Call(R_bcp, attr(conn, "handle_ptr"), data, table_name, as.integer(chunk_size), show_progress)
+    
+    if (res) stop(sprintf("bcp load failed with exit code %d"), res)
 
-    invisible()
+    invisible(res)
 }
 
 #' Creates SQL table from R data frame structure
