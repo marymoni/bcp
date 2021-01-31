@@ -78,6 +78,7 @@ int check_variable_class(const SEXP var_obj, const char *class_name) {
     return FALSE;
 }
 
+// TODO: fix 2038+ days conversion
 void convert_to_sql_date(int r_date, DATE_STRUCT *sql_date) {
 
     // convert days since epoch to seconds since epoch
@@ -107,6 +108,7 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
     SQLLEN col_info[col_len][chunk_size];
     unsigned char col_types[col_len];
     char *char_data = NULL;
+    DATE_STRUCT* date_data = NULL;
     FACTOR_LEVELS* factors = NULL;
     
     SQLHSTMT stmt = NULL;
@@ -206,8 +208,6 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
         }
     }
 
-    DATE_STRUCT* date_data = NULL;
-
     if (date_col_len) {        
         date_data = calloc(chunk_size * date_col_len, sizeof(DATE_STRUCT));
         if (!date_data) {
@@ -228,15 +228,15 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
         if (complete > row_len) {
             complete = row_len;
         }
-        int row_volume = complete - start;        
-        
+        int row_volume = complete - start;
+
         for(int i = 0; i < col_len; i++) {
 
             int col_num = i + 1;
 
             SEXP column = VECTOR_ELT(r_data, i);
             
-            memset(col_info[i], 0, sizeof(SQLLEN) * row_volume);            
+            memset(col_info[i], 0, sizeof(SQLLEN) * row_volume);
 
             if (col_types[i] == CHAR_TYPE) {
                 
@@ -268,7 +268,7 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
 
                 if (col_types[i] == DATE_TYPE) {
                     for(int j = start; j < complete; j++) {
-                        convert_to_sql_date(num_data_array[j], &date_data[date_data_index * chunk_size + j - start]);
+                        convert_to_sql_date(num_data_array[j], &date_data[(date_data_index * chunk_size) + j - start]);
                     }
                     res = SQLBindCol(stmt, col_num, SQL_C_TYPE_DATE, &date_data[date_data_index * chunk_size],
                         sizeof(DATE_STRUCT) * row_volume, col_info[i]);
@@ -355,6 +355,10 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
 
         if (char_data) {
             free(char_data);
+        }
+        
+        if (date_data) {
+            free(date_data);
         }
 
         if (factors) {

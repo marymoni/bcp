@@ -10,7 +10,9 @@ bcp(
   table_name,
   chunk_size = 5000L,
   show_progress = TRUE,
-  auto_create_table = FALSE
+  auto_create_table = FALSE,
+  stop_if_error = TRUE,
+  drop_if_exists = FALSE
 )
 }
 \arguments{
@@ -25,6 +27,8 @@ bcp(
 \item{show_progress}{Logical flag which indicates whether to show data loading progress}
 
 \item{auto_create_table}{Logical flag whether automatically create table structure before data uploading}
+
+\item{stop_if_error}{Logical flag whether raise error if BCP operation failed or just return error code}
 }
 \description{
 Bulk Upload Data Frame into SQL Table

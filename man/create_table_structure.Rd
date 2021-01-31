@@ -4,12 +4,20 @@
 \alias{create_table_structure}
 \title{Creates SQL table from R data frame structure}
 \usage{
-create_table_structure(conn, table_name, data, dialect = "t-sql")
+create_table_structure(
+  conn,
+  table_name,
+  data,
+  drop_if_exists = FALSE,
+  dialect = "t-sql"
+)
 }
 \arguments{
 \item{table_name}{SQL table name to be created}
 
 \item{data}{Data frame to be used as prototype for SQL table creation}
+
+\item{drop_if_exists}{Logical flag whether remove existing table and re-create its structure}
 
 \item{dialect}{SQL dialect for CREATE TABLE statement. As of now only T-SQL supported.}
 }

@@ -9,18 +9,20 @@ NULL
 #' @param chunk_size How many rows to load in each chunk
 #' @param show_progress Logical flag which indicates whether to show data loading progress
 #' @param auto_create_table Logical flag whether automatically create table structure before data uploading
+#' @param stop_if_error Logical flag whether raise error if BCP operation failed or just return error code
 #'
 #' @export
 #'
-bcp = function(conn, data, table_name, chunk_size = 5000L, show_progress = TRUE, auto_create_table = FALSE) {
+bcp = function(conn, data, table_name, chunk_size = 5000L, show_progress = TRUE, auto_create_table = FALSE,
+    stop_if_error = TRUE, drop_if_exists = FALSE) {
 
     if (auto_create_table) {
-        create_table_structure(conn, table_name, data)
+        create_table_structure(conn, table_name, data, drop_if_exists)
     }
 
     res = .Call(R_bcp, attr(conn, "handle_ptr"), data, table_name, as.integer(chunk_size), show_progress)
     
-    if (res) stop(sprintf("bcp load failed with exit code %d"), res)
+    if (stop_if_error && res) stop(sprintf("bcp load failed with exit code %d", res))
 
     invisible(res)
 }
@@ -29,11 +31,12 @@ bcp = function(conn, data, table_name, chunk_size = 5000L, show_progress = TRUE,
 #'
 #' @param table_name SQL table name to be created
 #' @param data Data frame to be used as prototype for SQL table creation
+#' @param drop_if_exists Logical flag whether remove existing table and re-create its structure
 #' @param dialect SQL dialect for CREATE TABLE statement. As of now only T-SQL supported.
 #'
 #' @export
 #'
-create_table_structure = function(conn, table_name, data, dialect = "t-sql") {
+create_table_structure = function(conn, table_name, data, drop_if_exists = FALSE, dialect = "t-sql") {
 
     if (dialect != "t-sql") stop("only t-sql dialect is supported for table creation as of now")
 
@@ -41,8 +44,8 @@ create_table_structure = function(conn, table_name, data, dialect = "t-sql") {
     
         col_class = class(col_data)
         
-        if (any(col_class == "character")) {
-            max_len = max(c(nchar(col_data), 1L))
+        if (any(col_class == "character" || col_class == "factor")) {
+            max_len = max(c(nchar(as.character(col_data)), 1L))
             col_type = sprintf("VARCHAR(%d)", max_len)
         } else if (any(col_class == "integer")) {
             col_type = "INTEGER"
@@ -69,6 +72,8 @@ create_table_structure = function(conn, table_name, data, dialect = "t-sql") {
         paste(mapply(get_column_definition, colnames(data), data), collapse = ",\n"),
         ")", collapse = "\n"
     )
+
+    if (drop_if_exists) sqlQuery(conn, sprintf("IF OBJECT_ID('%1$s') IS NOT NULL DROP TABLE %1$s", table_name))
 
     res = sqlQuery(conn, sql)
 
