@@ -19,7 +19,8 @@
 #define EXIT_CODE_SUCCESS 0
 #define EXIT_CODE_MEM_ALLOC_FAIL 1
 #define EXIT_CODE_SQL_ERROR 2
-#define EXIT_CODE_UNKNOWN_TYPE 2
+#define EXIT_CODE_UNKNOWN_TYPE 3
+#define EXIT_CODE_DATE_CONVERSION 4
 
 typedef struct {
     int length;
@@ -79,17 +80,20 @@ int check_variable_class(const SEXP var_obj, const char *class_name) {
 }
 
 // TODO: fix 2038+ days conversion
-void convert_to_sql_date(int r_date, DATE_STRUCT *sql_date) {
+int convert_to_sql_date(int r_date, DATE_STRUCT *sql_date) {
 
     // convert days since epoch to seconds since epoch
     time_t unix_time = r_date * 86400;
 
     struct tm * ptm;
     ptm = gmtime(&unix_time);
+    if (!ptm) return FALSE;
     
     sql_date->day = ptm->tm_mday;
     sql_date->month = ptm->tm_mon + 1;
     sql_date->year = ptm->tm_year + 1900;
+    
+    return TRUE;
 }
 
 int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int show_progress) {
@@ -178,7 +182,7 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
 
                 for(int k = 0; k < level_len; k++) {
                     const char* factor_value = CHAR(STRING_ELT(levels, k));
-                    strncpy(factors[i].values + k * MAX_CHAR_LEN, factor_value, MAX_CHAR_LEN);
+                    strncpy(factors[i].values + k * MAX_CHAR_LEN, factor_value, MAX_CHAR_LEN - 1);
                 }
 
                 char_col_len++;
@@ -249,7 +253,7 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
                     col_info[i][j - start] = SQL_COLUMN_IGNORE;
                     col_info[i][j - start] = SQL_NTS;
 
-                    strcpy((char*) (char_data + char_data_used), d_val);
+                    strncpy((char*) (char_data + char_data_used), d_val, MAX_CHAR_LEN - 1);
                     char_data_used += MAX_CHAR_LEN;
                 }
                 
@@ -267,8 +271,13 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
                 }
 
                 if (col_types[i] == DATE_TYPE) {
+                    int conv_res;
                     for(int j = start; j < complete; j++) {
-                        convert_to_sql_date(num_data_array[j], &date_data[(date_data_index * chunk_size) + j - start]);
+                        conv_res = convert_to_sql_date(num_data_array[j], &date_data[(date_data_index * chunk_size) + j - start]);
+                        if (!conv_res) {
+                            exit_code = EXIT_CODE_DATE_CONVERSION;
+                            goto end;
+                        }
                     }
                     res = SQLBindCol(stmt, col_num, SQL_C_TYPE_DATE, &date_data[date_data_index * chunk_size],
                         sizeof(DATE_STRUCT) * row_volume, col_info[i]);
@@ -294,12 +303,11 @@ int bcp(SQLHDBC dbc, SEXP r_data, const char* table_name, int chunk_size, int sh
                     } else {
                         col_info[i][j - start] = SQL_NTS;
                         int k = int_data_array[j] - 1;
-                        strcpy((char*)char_data + char_data_used, factors[i].values + k * step);                        
+                        strncpy((char*)char_data + char_data_used, factors[i].values + k * step, MAX_CHAR_LEN - 1);
                     }
                     char_data_used += MAX_CHAR_LEN;
                     
-                    res = SQLBindCol(stmt, col_num, SQL_C_CHAR, char_data_start, MAX_CHAR_LEN,
-                        col_info[i]);
+                    res = SQLBindCol(stmt, col_num, SQL_C_CHAR, char_data_start, MAX_CHAR_LEN, col_info[i]);
                     if ((exit_code = check_sql_error(res, "Bind column", stmt, SQL_HANDLE_STMT))) goto end;
                 }
 

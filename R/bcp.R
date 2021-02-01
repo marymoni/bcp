@@ -11,6 +11,10 @@ NULL
 #' @param auto_create_table Logical flag whether automatically create table structure before data uploading
 #' @param stop_if_error Logical flag whether raise error if BCP operation failed or just return error code
 #'
+#'
+#' @return exit_code Exit code (0 - bcp load completed successfully, 1 - memory allocation failed, 2 - SQL error,
+#'    3 - unsupported column type, 4 - date conversion error)
+#'
 #' @export
 #'
 bcp = function(conn, data, table_name, chunk_size = 5000L, show_progress = TRUE, auto_create_table = FALSE,
